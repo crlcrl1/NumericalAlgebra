@@ -7,6 +7,9 @@ np.random.seed(0)
 
 
 def square_method(a: NDArray, b: NDArray):
+    """
+    Use square method to solve the linear system. The input matrix should be a symmetric matrix.
+    """
     n = a.shape[0]
     for k in range(n):
         a[k, k] = np.sqrt(a[k, k])
@@ -20,6 +23,9 @@ def square_method(a: NDArray, b: NDArray):
 
 
 def optimized_square_method(a: NDArray, b: NDArray):
+    """
+    Use optimized square method to solve the linear system. The input matrix should be a symmetric matrix.
+    """
     n = a.shape[0]
     v = np.zeros(n)
     for k in range(n):

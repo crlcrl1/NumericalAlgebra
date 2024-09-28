@@ -1,11 +1,14 @@
 from typing import Tuple
 import numpy as np
-from numpy.typing import *
+from numpy.typing import NDArray
 
 from shared import forward_substitution, backward_substitution
 
 
 def gauss_transform(a: NDArray) -> None:
+    """
+    Gauss transform with no pivot. It modifies the input matrix in place.
+    """
     n = a.shape[0]
     for i in range(n - 1):
         a[i + 1:, i] = a[i + 1:, i] / a[i, i]
@@ -15,6 +18,10 @@ def gauss_transform(a: NDArray) -> None:
 
 
 def find_all_max(a: NDArray) -> Tuple[int, int]:
+    """
+    Find the maximum element in the matrix.
+    :return: the indices of the maximum element
+    """
     n = a.shape[0]
     max_i, max_j = 0, 0
     max_val = 0
@@ -27,6 +34,9 @@ def find_all_max(a: NDArray) -> Tuple[int, int]:
 
 
 def gauss_transform_with_full_pivot(a: NDArray, u: NDArray, v: NDArray) -> None:
+    """
+    Gauss transform with full pivot. It modifies the input matrix in place.
+    """
     n = a.shape[0]
     for k in range(n - 1):
         p, q = find_all_max(a[k:, k:])
@@ -43,6 +53,9 @@ def gauss_transform_with_full_pivot(a: NDArray, u: NDArray, v: NDArray) -> None:
 
 
 def gauss_transform_with_column_pivot(a: NDArray, u: NDArray) -> None:
+    """
+    Gauss transform with column pivot. It modifies the input matrix in place.
+    """
     n = a.shape[0]
     for k in range(n - 1):
         p = np.argmax(np.abs(a[k:, k]))
@@ -58,6 +71,9 @@ def gauss_transform_with_column_pivot(a: NDArray, u: NDArray) -> None:
 
 
 def generate_matrix(n: int) -> NDArray:
+    """
+    Generate a matrix with given dimension described in the problem.
+    """
     res = np.eye(n, dtype=np.float64) * 6
     for i in range(n - 1):
         res[i, i + 1] = 1.0
@@ -66,6 +82,9 @@ def generate_matrix(n: int) -> NDArray:
 
 
 def generate_vector(n: int) -> NDArray:
+    """
+    Generate a vector with given dimension described in the problem.
+    """
     res = np.array([15.0 for _ in range(n)])
     res[0] = 7.0
     res[n - 1] = 14.0
@@ -73,6 +92,9 @@ def generate_vector(n: int) -> NDArray:
 
 
 def normal(a: NDArray, b: NDArray) -> NDArray:
+    """
+    Use normal method(without povit) to solve the linear system.
+    """
     gauss_transform(a)
     temp = np.zeros(a.shape[0])
     for i in range(a.shape[0]):
@@ -87,6 +109,9 @@ def normal(a: NDArray, b: NDArray) -> NDArray:
 
 
 def all_max(a: NDArray, b: NDArray) -> NDArray:
+    """
+    Use all povit method to solve the linear system.
+    """
     u = np.zeros(a.shape[0], dtype=np.int32)
     v = np.zeros(a.shape[0], dtype=np.int32)
     gauss_transform_with_full_pivot(a, u, v)
@@ -107,6 +132,9 @@ def all_max(a: NDArray, b: NDArray) -> NDArray:
 
 
 def column_max(a: NDArray, b: NDArray) -> NDArray:
+    """
+    Use column povit method to solve the linear system.
+    """
     u = np.zeros(a.shape[0], dtype=np.int32)
     gauss_transform_with_column_pivot(a, u)
     temp = np.zeros(a.shape[0])
@@ -123,7 +151,10 @@ def column_max(a: NDArray, b: NDArray) -> NDArray:
     return b
 
 
-def generate_title():
+def generate_table_title():
+    """
+    Generate the table title. This is a helper function for printing the table.
+    """
     title = (
         "|Dimension | Normal(2 norm) | Normal(inf norm) | All Max(2 norm) | All Max(inf norm) | "
         "Column Max(2 norm) | Column Max(inf norm)|"
@@ -132,7 +163,10 @@ def generate_title():
     print("-" * len(title))
 
 
-def generate_line(n: int) -> None:
+def generate_table_line(n: int) -> None:
+    """
+    Generate a table line. This is a helper function for printing the table.
+    """
     a = generate_matrix(n)
     b = generate_vector(n)
     print(f"|{n:^10}|", end="")
@@ -150,10 +184,10 @@ def generate_line(n: int) -> None:
 
 
 def main() -> None:
-    generate_title()
+    generate_table_title()
     dims = [2, 12, 24, 48, 84]
     for dim in dims:
-        generate_line(dim)
+        generate_table_line(dim)
 
 
 if __name__ == "__main__":

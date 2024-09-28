@@ -1,6 +1,10 @@
 from numpy.typing import NDArray
 
 def forward_substitution(a: NDArray, b: NDArray) -> None:
+    """
+    Use backward substitution to solve the linear system.
+    The input matrix should be in upper triangular form.
+    """
     n = a.shape[0]
     for i in range(n - 1):
         b[i] = b[i] / a[i, i]
@@ -9,6 +13,10 @@ def forward_substitution(a: NDArray, b: NDArray) -> None:
 
 
 def backward_substitution(a: NDArray, b: NDArray) -> None:
+    """
+    Use backward substitution to solve the linear system.
+    The input matrix should be in lower triangular form.
+    """
     n = a.shape[0]
     for i in range(n - 1, 0, -1):
         b[i] = b[i] / a[i, i]
