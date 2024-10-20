@@ -33,6 +33,7 @@ def backward_substitution(a: NDArray, b: NDArray) -> NDArray:
     b[0] /= a[0, 0]
     return b
 
+
 def solve(lu: Tuple, b: NDArray) -> NDArray:
     """
     Solve the system of linear equations Ax = b, where A = PLU.
