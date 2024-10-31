@@ -58,10 +58,11 @@ def fixed_matrix():
 
 
 def hilbert_matrix():
-    a = np.array([[1 / (i + j + 1) for j in range(40)] for i in range(40)])
-    b = a @ np.ones(40)
+    dim = 40
+    a = np.array([[1 / (i + j + 1) for j in range(dim)] for i in range(dim)])
+    b = a @ np.ones(dim)
     x = solve_linear_system(a, b)
-    print(np.linalg.norm(x - np.ones(40), ord=2))
+    print(np.linalg.norm(x - np.ones(dim), ord=2))
 
 
 def random_matrix():

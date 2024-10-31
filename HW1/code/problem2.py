@@ -77,6 +77,7 @@ def main():
     print(f"Square method: {np.linalg.norm(a @ square_ans - b)}")
     optimized_ans = optimized_square_method(a.copy(), b.copy())
     print(f"Optimized square method: {np.linalg.norm(a @ optimized_ans - b)}")
+    print(f"Optimized square method: {np.linalg.norm(optimized_ans - np.ones(40))}.")
 
 
 if __name__ == "__main__":

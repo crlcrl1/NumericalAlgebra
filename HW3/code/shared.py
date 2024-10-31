@@ -49,19 +49,6 @@ def qr(matrix: NDArray) -> Tuple[NDArray, NDArray]:
     return matrix, d
 
 
-def forward_substitution(a: NDArray, b: NDArray) -> NDArray:
-    """
-    Use backward substitution to solve the linear system.
-    The input matrix should be in lower triangular form.
-    """
-    n = a.shape[0]
-    for i in range(n - 1):
-        b[i] /= a[i, i]
-        b[i + 1:] = b[i + 1:] - b[i] * a[i + 1:, i]
-    b[n - 1] /= a[n - 1, n - 1]
-    return b
-
-
 def backward_substitution(a: NDArray, b: NDArray) -> NDArray:
     """
     Use backward substitution to solve the linear system.
@@ -90,7 +77,7 @@ def solve_linear_system(matrix: NDArray, b: NDArray) -> NDArray:
 
 def solve_least_squares(matrix: NDArray, b: NDArray) -> NDArray:
     """
-    Solve a least squares problem using the QR decomposition.
+    Solve the least squares problem using the QR decomposition.
     """
     r, d = qr(matrix)
     m, n = matrix.shape
