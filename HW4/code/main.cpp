@@ -23,7 +23,7 @@ class StripMatrix {
 public:
     StripMatrix(const int n, const int strip_size) :
         strip_size(strip_size), n(n), data_col_size(2 * strip_size + 1) {
-        data = new T[n * (2 * strip_size + 1)];
+        data = new T[n * (2 * strip_size + 1)]{};
     }
     ~StripMatrix() { delete[] data; }
 
@@ -74,16 +74,17 @@ std::tuple<std::vector<double>, int> gauss_seidel(const StripMatrix<double> &A,
             const int start = std::max(0, i - strip_size);
             const int end = std::min(n, i + strip_size + 1);
             for (int j = start; j < i; ++j) {
-                sum += -A(i, j) * x[j];
+                sum -= A(i, j) * x[j];
             }
             for (int j = i + 1; j < end; ++j) {
-                sum += -A(i, j) * x[j];
+                sum -= A(i, j) * x[j];
             }
             sum /= A(i, i);
             const double x_old = x[i];
             const double x_new = g[i] + sum;
             x[i] = x_new;
-            error += (x_new - x_old) * (x_new - x_old);
+            const double diff = x_new - x_old;
+            error += diff * diff;
         }
         error = std::sqrt(error);
         ++iter;
@@ -164,7 +165,7 @@ void dump_numpy_array(const std::vector<double> &v, const std::string &file_path
 }
 
 int main() {
-    constexpr int n_list[] = {20, 40, 80};
+    constexpr int n_list[] = {20, 40, 80, 160};
     for (const int n: n_list) {
         constexpr double eps = 1e-7;
         const auto start = std::chrono::high_resolution_clock::now();
