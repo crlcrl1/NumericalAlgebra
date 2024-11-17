@@ -153,14 +153,12 @@ double g(const double x, const double y) { return std::exp(x * y); }
  */
 void dump_numpy_array(const std::vector<double> &v, const std::string &file_path) {
     std::ofstream file(file_path);
-    file << "[";
     for (int i = 0; i < v.size(); ++i) {
         file << std::format("{:.9f}", v[i]);
         if (i != v.size() - 1) {
-            file << ", ";
+            file << " ";
         }
     }
-    file << "]";
     file.close();
 }
 
@@ -169,7 +167,7 @@ int main() {
     for (const int n: n_list) {
         constexpr double eps = 1e-7;
         const auto start = std::chrono::high_resolution_clock::now();
-        const auto [u, iter] = solve_pde(f, g, n, eps, 10000);
+        const auto [u, iter] = solve_pde(f, g, n, eps, -1);
         const auto end = std::chrono::high_resolution_clock::now();
         const auto diff = end - start;
         dump_numpy_array(u, std::format("u_{}.txt", n));
