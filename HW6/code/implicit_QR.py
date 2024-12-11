@@ -3,6 +3,7 @@ from typing import Tuple
 
 import numpy as np
 from numpy.typing import NDArray
+import matplotlib.pyplot as plt
 
 
 @dataclass
@@ -67,20 +68,20 @@ def QR_iteration(H: NDArray) -> NDArray:
         v, beta = householder(np.array([x, y, z], copy=True))
         v = v.reshape(-1, 1)
         q = max(0, k)
-        H[k + 1:k + 4, q:] -= beta * v @ (v.T @ H[k + 1:k + 4, q:])
+        H[k + 1 : k + 4, q:] -= beta * v @ (v.T @ H[k + 1 : k + 4, q:])
         r = min(k + 5, n)
-        H[:r, k + 1:k + 4] -= beta * H[:r, k + 1:k + 4] @ v @ v.T
+        H[:r, k + 1 : k + 4] -= beta * H[:r, k + 1 : k + 4] @ v @ v.T
         x = H[k + 2, k + 1]
         y = H[k + 3, k + 1]
         if k < n - 4:
             z = H[k + 4, k + 1]
-        P[:, k + 1:k + 4] -= beta * P[:, k + 1:k + 4] @ v @ v.T
+        P[:, k + 1 : k + 4] -= beta * P[:, k + 1 : k + 4] @ v @ v.T
 
     v, beta = householder(np.array([x, y], copy=True))
     v = v.reshape(-1, 1)
-    H[n - 2:, n - 3:] -= beta * v @ (v.T @ H[n - 2:, n - 3:])
-    H[:, n - 2:] -= beta * H[:, n - 2:] @ v @ v.T
-    P[:, n - 2:] -= beta * P[:, n - 2:] @ v @ v.T
+    H[n - 2 :, n - 3 :] -= beta * v @ (v.T @ H[n - 2 :, n - 3 :])
+    H[:, n - 2 :] -= beta * H[:, n - 2 :] @ v @ v.T
+    P[:, n - 2 :] -= beta * P[:, n - 2 :] @ v @ v.T
     return P
 
 
@@ -105,7 +106,7 @@ def extract_eigenvalues(A: NDArray, tol: float) -> NDArray:
             b = m[0, 1]
             c = m[1, 0]
             d = m[1, 1]
-            e_list.extend(np.roots([1., -a - d, a * d - b * c]))
+            e_list.extend(np.roots([1.0, -a - d, a * d - b * c]))
 
     return np.array(e_list)
 
@@ -131,11 +132,11 @@ def implicit_QR(A: NDArray, tol: float = 1e-10) -> Tuple[NDArray, int]:
     # Upper Hessenberg decomposition
     Q = np.eye(n)
     for k in range(n - 2):
-        v, beta = householder(A[k + 1:, k].copy())
+        v, beta = householder(A[k + 1 :, k].copy())
         v = v.reshape(-1, 1)
-        A[k + 1:, k:] -= beta * v @ (v.T @ A[k + 1:, k:])
-        A[:, k + 1:] -= beta * A[:, k + 1:] @ v @ v.T
-        Q[:, k + 1:] -= beta * Q[:, k + 1:] @ v @ v.T
+        A[k + 1 :, k:] -= beta * v @ (v.T @ A[k + 1 :, k:])
+        A[:, k + 1 :] -= beta * A[:, k + 1 :] @ v @ v.T
+        Q[:, k + 1 :] -= beta * Q[:, k + 1 :] @ v @ v.T
 
     num_iter = 0
     while True:
@@ -170,16 +171,18 @@ def implicit_QR(A: NDArray, tol: float = 1e-10) -> Tuple[NDArray, int]:
                 break
             l -= 1
 
-        H = A[l:m + 1, l:m + 1]
+        H = A[l : m + 1, l : m + 1]
         P = QR_iteration(H)
-        Q[:, l:m + 1] = Q[:, l:m + 1] @ P
-        A[:l, l:m + 1] = A[:l, l:m + 1] @ P
-        A[l:m + 1, m + 1:] = P.T @ A[l:m + 1, m + 1:]
+        Q[:, l : m + 1] = Q[:, l : m + 1] @ P
+        A[:l, l : m + 1] = A[:l, l : m + 1] @ P
+        A[l : m + 1, m + 1 :] = P.T @ A[l : m + 1, m + 1 :]
 
     return extract_eigenvalues(A, tol), num_iter
 
 
-def inverse_power_method(A: NDArray, eig: float, tol: float = 1e-10) -> Tuple[NDArray, int]:
+def inverse_power_method(
+    A: NDArray, eig: float, tol: float = 1e-10
+) -> Tuple[NDArray, int]:
     """
     Perform the inverse power method to find the eigenvector of a matrix.
 
@@ -238,18 +241,35 @@ def eig(A: NDArray, tol: float = 1e-10) -> EigResult:
 
 
 def generate_matrix(x: float) -> NDArray:
-    return np.array([[9.1, 3.0, 2.6, 4.0], [4.2, 5.3, 4.7, 1.6], [3.2, 1.7, 9.4, x], [6.1, 4.9, 3.5, 6.2]])
+    return np.array(
+        [
+            [9.1, 3.0, 2.6, 4.0],
+            [4.2, 5.3, 4.7, 1.6],
+            [3.2, 1.7, 9.4, x],
+            [6.1, 4.9, 3.5, 6.2],
+        ]
+    )
 
 
 def main():
     x_list = [0.9, 1.0, 1.1]
+    eig_values = []
     for x in x_list:
         A = generate_matrix(x)
         result = eig(A)
         print(f"x = {x}")
         print(result)
+        eig_values.append(result.eigenvalues)
         print()
 
+    for i in range(3):
+        plt.scatter(
+            [e.real for e in eig_values[i]],
+            [e.imag for e in eig_values[i]],
+            label=f"x = {x_list[i]}",
+        )
+    plt.show()
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()
