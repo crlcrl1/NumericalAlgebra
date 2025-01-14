@@ -52,12 +52,18 @@ CRSMatrix initAu(const int n) {
 
     setBlock(A, 0, 0, A1);
     setBlock(A, (n - 1) * (n - 1), (n - 1) * (n - 1), A1);
+
+#pragma omp parallel for
     for (int i = 1; i < n - 1; i++) {
         setBlock(A, i * (n - 1), i * (n - 1), A2);
     }
+#pragma omp parallel for
     for (int i = 0; i < n - 1; i++) {
         setIdentityBlock(A, i * (n - 1), i * (n - 1) + n - 1, n - 1, -n * n);
-        setIdentityBlock(A, i * (n - 1) + n - 1, i * (n - 1), n - 1, -n * n);
+    }
+#pragma omp parallel for
+    for (int i = 1; i < n; ++i) {
+        setIdentityBlock(A, i * (n - 1), (i - 1) * (n - 1), n - 1, -n * n);
     }
     return A;
 }
@@ -80,12 +86,16 @@ CRSMatrix initAv(const int n) {
         }
     }
 
+#pragma omp parallel for
     for (int i = 0; i < n - 1; i++) {
         setBlock(A, i * n, i * n, A3);
         if (i != n - 2) {
             setIdentityBlock(A, i * n, i * n + n, n, -n * n);
-            setIdentityBlock(A, i * n + n, i * n, n, -n * n);
         }
+    }
+#pragma omp parallel for
+    for (int i = 0; i < n - 2; ++i) {
+        setIdentityBlock(A, i * n + n, i * n, n, -n * n);
     }
 
     return A;
@@ -93,17 +103,31 @@ CRSMatrix initAv(const int n) {
 
 CRSMatrix initA(const int n) {
     auto A = CRSMatrix(2 * n * (n - 1), 2 * n * (n - 1));
-    A.reserve(10 * n * (n - 1));
+    A.reserve(Eigen::VectorXd::Constant(2 * n * (n - 1), 5));
 
-    setBlock(A, 0, 0, initAu(n));
-    setBlock(A, n * (n - 1), n * (n - 1), initAv(n));
+    const auto aU = initAu(n);
+    const auto aV = initAv(n);
+
+#pragma omp parallel
+#pragma omp sections
+    {
+#pragma omp section
+        {
+            setBlock(A, 0, 0, aU);
+        }
+#pragma omp section
+        {
+            setBlock(A, n * (n - 1), n * (n - 1), aV);
+        }
+    }
+
     A.makeCompressed();
     return A;
 }
 
 CRSMatrix initBu(const int n) {
     auto B = CRSMatrix(n * (n - 1), n * n);
-    B.reserve(2 * n * (n - 1));
+    B.reserve(Eigen::VectorXi::Constant(n * (n - 1), 2));
 
     auto H = CRSMatrix(n - 1, n);
     H.reserve(Eigen::VectorXi::Constant(n, 2));
@@ -112,6 +136,7 @@ CRSMatrix initBu(const int n) {
         H.insert(i, i + 1) = n;
     }
 
+#pragma omp parallel for
     for (int i = 0; i < n; i++) {
         setBlock(B, i * n - i, i * n, H);
     }
@@ -121,8 +146,9 @@ CRSMatrix initBu(const int n) {
 
 CRSMatrix initBv(const int n) {
     auto B = CRSMatrix(n * (n - 1), n * n);
-    B.reserve(2 * n * (n - 1));
+    B.reserve(Eigen::VectorXi::Constant(2 * n * (n - 1), 2));
 
+#pragma omp parallel for
     for (int i = 0; i < n - 1; i++) {
         setIdentityBlock(B, i * n, i * n, n, -n);
         setIdentityBlock(B, i * n, i * n + n, n, n);
@@ -133,10 +159,26 @@ CRSMatrix initBv(const int n) {
 
 CRSMatrix initB(const int n) {
     auto B = CRSMatrix(2 * n * (n - 1), n * n);
-    B.reserve(4 * n * (n - 1));
+    B.reserve(Eigen::VectorXd::Constant(2 * n * (n - 1), 2));
 
-    setBlock(B, 0, 0, initBu(n));
-    setBlock(B, n * (n - 1), 0, initBv(n));
+    const auto bU = initBu(n);
+    const auto bV = initBv(n);
+
+#pragma omp parallel
+#pragma omp sections
+    {
+#pragma omp section
+        {
+            setBlock(B, 0, 0, bU);
+        }
+#pragma omp section
+        {
+            setBlock(B, n * (n - 1), 0, bV);
+        }
+    }
+
+    // setBlock(B, 0, 0, initBu(n));
+    // setBlock(B, n * (n - 1), 0, initBv(n));
     B.makeCompressed();
     return B;
 }

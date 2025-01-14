@@ -36,16 +36,10 @@ else ()
     message(STATUS "IPO/LTO will not be enabled in non-Release mode")
 endif ()
 
-add_executable(Final main.cpp
-        util.cpp
-        util.h
-        v_cycle.cpp
-        v_cycle.h
-        uzawa.cpp
-        uzawa.h
-        equation.cpp
-        equation.h
-)
+file(GLOB SOURCES CONFIGURE_DEPENDS "*.cpp")
+file(GLOB HEADERS CONFIGURE_DEPENDS "include/*.h")
+
+add_executable(Final ${SOURCES} ${HEADERS})
 
 target_link_libraries(Final Eigen3::Eigen)
 target_link_libraries(Final OpenMP::OpenMP_CXX)

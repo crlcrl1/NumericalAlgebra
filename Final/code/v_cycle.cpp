@@ -70,20 +70,28 @@ std::pair<CRSMatrix, CRSMatrix> restrictOperator(const int n) {
     return {restrictU, restrictF};
 }
 
-void ompGaussSeidel(const CRSMatrix &A, Eigen::VectorXd &u, const Eigen::VectorXd &b) {
+void parallelGaussSeidel(const CRSMatrix &A, Eigen::VectorXd &u, const Eigen::VectorXd &b) {
     const int rows = static_cast<int>(u.size());
     const int block_size = rows / 2;
+    const double *values = A.valuePtr();
+    const int *outerIndices = A.outerIndexPtr();
+    const int *innerIndices = A.innerIndexPtr();
+
 #pragma omp parallel for
     for (int row = 0; row < 2; ++row) {
         const int start = row * block_size;
         const int end = std::min(start + block_size, rows);
         for (int j = start; j < end; j++) {
             double sum = 0;
-            for (CRSMatrix::InnerIterator it(A, j); it; ++it) {
-                if (const long col = it.col(); col != j) {
-                    sum += it.value() * u[col];
+            const int rowStart = outerIndices[j];
+            const int rowEnd = outerIndices[j + 1];
+
+            for (int i = rowStart; i < rowEnd; i++) {
+                if (const int col = innerIndices[i]; col != j) {
+                    sum += values[i] * u[col];
                 }
             }
+
             u[j] = (b[j] - sum) / A.coeff(j, j);
         }
     }
@@ -91,75 +99,128 @@ void ompGaussSeidel(const CRSMatrix &A, Eigen::VectorXd &u, const Eigen::VectorX
 
 void gaussSeidel(const CRSMatrix &A, Eigen::VectorXd &u, const Eigen::VectorXd &b) {
     const int rows = static_cast<int>(u.size());
+    const double *values = A.valuePtr();
+    const int *outerIndices = A.outerIndexPtr();
+    const int *innerIndices = A.innerIndexPtr();
+
     for (int j = 0; j < rows; j++) {
         double sum = 0;
-        for (CRSMatrix::InnerIterator it(A, j); it; ++it) {
-            if (const long col = it.col(); col != j) {
-                sum += it.value() * u[col];
+        const int rowStart = outerIndices[j];
+        const int rowEnd = outerIndices[j + 1];
+
+        for (int i = rowStart; i < rowEnd; i++) {
+            if (const int col = innerIndices[i]; col != j) {
+                sum += values[i] * u[col];
             }
         }
+
         u[j] = (b[j] - sum) / A.coeff(j, j);
     }
+}
+
+void updatePressure(Eigen::VectorXd &u, Eigen::VectorXd &p, const Eigen::VectorXd &d, const int i,
+                    const int j, const int n) {
+    const int offset = n * (n - 1);
+    double r = 0;
+    int noneZeroCnt = 0;
+    // top
+    if (i != 0) {
+        r -= u[offset + (i - 1) * n + j];
+        noneZeroCnt++;
+    }
+    // bottom
+    if (i != n - 1) {
+        r += u[offset + i * n + j];
+        noneZeroCnt++;
+    }
+    // left
+    if (j != 0) {
+        r -= u[i * (n - 1) + j - 1];
+        noneZeroCnt++;
+    }
+    // right
+    if (j != n - 1) {
+        r += u[i * (n - 1) + j];
+        noneZeroCnt++;
+    }
+    r *= -n;
+    r -= d[i * n + j];
+
+    const double delta = r / (noneZeroCnt * n);
+    const double temp = r / noneZeroCnt;
+    p[i * n + j] += r;
+    // top
+    if (i != 0) {
+        u[offset + (i - 1) * n + j] -= delta;
+        p[(i - 1) * n + j] -= temp;
+    }
+    // bottom
+    if (i != n - 1) {
+        u[offset + i * n + j] += delta;
+        p[(i + 1) * n + j] -= temp;
+    }
+    // left
+    if (j != 0) {
+        u[i * (n - 1) + j - 1] -= delta;
+        p[i * n + j - 1] -= temp;
+    }
+    // right
+    if (j != n - 1) {
+        u[i * (n - 1) + j] += delta;
+        p[i * n + j + 1] -= temp;
+    }
+}
+
+void parallelDGSIter(const CRSMatrix &A, const CRSMatrix &B, Eigen::VectorXd &u, Eigen::VectorXd &p,
+                     const Eigen::VectorXd &f, const Eigen::VectorXd &d, const int n) {
+    const Eigen::VectorXd rhs = f - B * p;
+
+    parallelGaussSeidel(A, u, rhs);
+
+#pragma omp parallel for collapse(2)
+    for (int k = 0; k < 2; ++k) {
+        for (int l = 0; l < 2; ++l) {
+            // these units will update in parallel
+            for (int i = k * (n / 2 + 1); i < k * (n / 2 + 1) + n / 2 - 1; ++i) {
+                for (int j = l * (n / 2 + 1); j < l * (n / 2 + 1) + n / 2 - 1; ++j) {
+                    updatePressure(u, p, d, i, j, n);
+                }
+            }
+        }
+    }
+
+#pragma omp parallel for collapse(2)
+    for (int i = 0; i < 2; ++i) {
+        for (int j = 0; j < 2; ++j) {
+            if (i == 0) {
+                for (int k = j * (n / 2 + 1); k < j * (n / 2 + 1) + n / 2 - 1; ++k) {
+                    updatePressure(u, p, d, n / 2 - 1, k, n);
+                    updatePressure(u, p, d, n / 2, k, n);
+                }
+            } else {
+                for (int k = j * (n / 2 + 1); k < j * (n / 2 + 1) + n / 2 - 1; ++k) {
+                    updatePressure(u, p, d, k, n / 2 - 1, n);
+                    updatePressure(u, p, d, k, n / 2, n);
+                }
+            }
+        }
+    }
+
+    updatePressure(u, p, d, n / 2 - 1, n / 2 - 1, n);
+    updatePressure(u, p, d, n / 2 - 1, n / 2, n);
+    updatePressure(u, p, d, n / 2, n / 2 - 1, n);
+    updatePressure(u, p, d, n / 2, n / 2, n);
 }
 
 // Perform one iteration
 void DGSIter(const CRSMatrix &A, const CRSMatrix &B, Eigen::VectorXd &u, Eigen::VectorXd &p,
              const Eigen::VectorXd &f, const Eigen::VectorXd &d, const int n) {
     const Eigen::VectorXd rhs = f - B * p;
+    gaussSeidel(A, u, rhs);
 
-    ompGaussSeidel(A, u, rhs);
-
-    const int offset = n * (n - 1);
     for (int i = 0; i < n; ++i) {
         for (int j = 0; j < n; ++j) {
-            double r = 0;
-            int noneZeroCnt = 0;
-            // top
-            if (i != 0) {
-                r -= u[offset + (i - 1) * n + j];
-                noneZeroCnt++;
-            }
-            // bottom
-            if (i != n - 1) {
-                r += u[offset + i * n + j];
-                noneZeroCnt++;
-            }
-            // left
-            if (j != 0) {
-                r -= u[i * (n - 1) + j - 1];
-                noneZeroCnt++;
-            }
-            // right
-            if (j != n - 1) {
-                r += u[i * (n - 1) + j];
-                noneZeroCnt++;
-            }
-            r *= -n;
-            r -= d[i * n + j];
-
-            const double delta = r / (noneZeroCnt * n);
-            const double temp = r / noneZeroCnt;
-            p[i * n + j] += r;
-            // top
-            if (i != 0) {
-                u[offset + (i - 1) * n + j] -= delta;
-                p[(i - 1) * n + j] -= temp;
-            }
-            // bottom
-            if (i != n - 1) {
-                u[offset + i * n + j] += delta;
-                p[(i + 1) * n + j] -= temp;
-            }
-            // left
-            if (j != 0) {
-                u[i * (n - 1) + j - 1] -= delta;
-                p[i * n + j - 1] -= temp;
-            }
-            // right
-            if (j != n - 1) {
-                u[i * (n - 1) + j] += delta;
-                p[i * n + j + 1] -= temp;
-            }
+            updatePressure(u, p, d, i, j, n);
         }
     }
 }
@@ -172,7 +233,11 @@ void multiGridIter(const CRSMatrix &A, const CRSMatrix &B, Eigen::VectorXd &u, E
     }
 
     for (int i = 0; i < v1; ++i) {
-        DGSIter(A, B, u, p, f, d, n);
+        if (n > 4) {
+            parallelDGSIter(A, B, u, p, f, d, n);
+        } else {
+            DGSIter(A, B, u, p, f, d, n);
+        }
     }
 
     const Eigen::VectorXd errorU = f - A * u - B * p;
@@ -207,7 +272,11 @@ void multiGridIter(const CRSMatrix &A, const CRSMatrix &B, Eigen::VectorXd &u, E
     p += liftP * rectifP;
 
     for (int i = 0; i < v2; ++i) {
-        DGSIter(A, B, u, p, f, d, n);
+        if (n > 4) {
+            parallelDGSIter(A, B, u, p, f, d, n);
+        } else {
+            DGSIter(A, B, u, p, f, d, n);
+        }
     }
 }
 
