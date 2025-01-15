@@ -13,8 +13,6 @@ double error(const Eigen::MatrixXd &u, const Eigen::MatrixXd &v, int n);
 
 void logError(double error, int iter);
 
-void resetLog();
-
 CRSMatrix restrictU(int n);
 
 CRSMatrix restrictF(int n);

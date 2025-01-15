@@ -7,8 +7,6 @@
 
 
 constexpr double PI = std::numbers::pi;
-const int MAX_THREADS = omp_get_max_threads();
-
 
 void setBlock(CRSMatrix &A, const int i, const int j, const CRSMatrix &B) {
     for (int k = 0; k < B.outerSize(); k++) {
@@ -178,8 +176,6 @@ CRSMatrix initB(const int n) {
         }
     }
 
-    // setBlock(B, 0, 0, initBu(n));
-    // setBlock(B, n * (n - 1), 0, initBv(n));
     B.makeCompressed();
     return B;
 }
@@ -219,8 +215,6 @@ void logError(const double error, const int iter) {
     // put the cursor to line start
     std::cout << "\033[1A";
 }
-
-void resetLog() { std::cout << "\033[2K"; }
 
 CRSMatrix restrictU(const int n) {
     assert(n % 2 == 0);
