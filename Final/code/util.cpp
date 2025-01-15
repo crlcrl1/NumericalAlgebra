@@ -7,6 +7,7 @@
 
 
 constexpr double PI = std::numbers::pi;
+const int MAX_THREADS = omp_get_max_threads();
 
 
 void setBlock(CRSMatrix &A, const int i, const int j, const CRSMatrix &B) {
@@ -220,3 +221,120 @@ void logError(const double error, const int iter) {
 }
 
 void resetLog() { std::cout << "\033[2K"; }
+
+CRSMatrix restrictU(const int n) {
+    assert(n % 2 == 0);
+
+    const int cols = 2 * n * (n - 1);
+    const int nNew = n / 2;
+    const int rows = 2 * nNew * (nNew - 1);
+    CRSMatrix restrictU(rows, cols);
+    restrictU.reserve(Eigen::VectorXi::Constant(rows, 6));
+
+    // restrict u
+    for (int i = 0; i < nNew; ++i) {
+        for (int j = 0; j < nNew - 1; ++j) {
+            const int row = i * (nNew - 1) + j;
+            const int base1 = 2 * i * (n - 1) + 2 * j + 1;
+            const int base2 = (2 * i + 1) * (n - 1) + 2 * j + 1;
+            restrictU.insert(row, base1) = 0.25;
+            restrictU.insert(row, base2) = 0.25;
+            restrictU.insert(row, base1 - 1) = 0.125;
+            restrictU.insert(row, base1 + 1) = 0.125;
+            restrictU.insert(row, base2 - 1) = 0.125;
+            restrictU.insert(row, base2 + 1) = 0.125;
+        }
+    }
+
+    const int offsetRestrict = nNew * (nNew - 1);
+    const int offsetOriginal = n * (n - 1);
+    // restrict v
+    for (int i = 0; i < nNew - 1; ++i) {
+        for (int j = 0; j < nNew; ++j) {
+            const int row = offsetRestrict + i * nNew + j;
+            const int base1 = (2 * i + 1) * n + 2 * j + offsetOriginal;
+            const int base2 = base1 + 1;
+            restrictU.insert(row, base1) = 0.25;
+            restrictU.insert(row, base2) = 0.25;
+            restrictU.insert(row, base1 - n) = 0.125;
+            restrictU.insert(row, base1 + n) = 0.125;
+            restrictU.insert(row, base2 - n) = 0.125;
+            restrictU.insert(row, base2 + n) = 0.125;
+        }
+    }
+    restrictU.makeCompressed();
+    return restrictU;
+}
+
+CRSMatrix restrictF(const int n) {
+    assert(n % 2 == 0);
+
+    const int cols = n * n;
+    const int nNew = n / 2;
+    const int rows = nNew * nNew;
+    CRSMatrix restrictF(rows, cols);
+    restrictF.reserve(Eigen::VectorXi::Constant(rows, 4));
+
+    // restrict f
+    for (int i = 0; i < nNew; ++i) {
+        for (int j = 0; j < nNew; ++j) {
+            const int row = i * nNew + j;
+            const int base = 2 * i * n + 2 * j;
+            restrictF.insert(row, base) = 0.25;
+            restrictF.insert(row, base + 1) = 0.25;
+            restrictF.insert(row, base + n) = 0.25;
+            restrictF.insert(row, base + n + 1) = 0.25;
+        }
+    }
+    restrictF.makeCompressed();
+
+    return restrictF;
+}
+
+void gaussSeidel(const CRSMatrix &A, Eigen::VectorXd &u, const Eigen::VectorXd &b) {
+    const int rows = static_cast<int>(u.size());
+    const double *values = A.valuePtr();
+    const int *outerIndices = A.outerIndexPtr();
+    const int *innerIndices = A.innerIndexPtr();
+
+    for (int j = 0; j < rows; j++) {
+        double sum = 0;
+        const int rowStart = outerIndices[j];
+        const int rowEnd = outerIndices[j + 1];
+
+        for (int i = rowStart; i < rowEnd; i++) {
+            if (const int col = innerIndices[i]; col != j) {
+                sum += values[i] * u[col];
+            }
+        }
+
+        u[j] = (b[j] - sum) / A.coeff(j, j);
+    }
+}
+
+void parallelGaussSeidel(const CRSMatrix &A, Eigen::VectorXd &u, const Eigen::VectorXd &b) {
+    const int rows = static_cast<int>(u.size());
+    const int block_size = rows / 2;
+    const double *values = A.valuePtr();
+    const int *outerIndices = A.outerIndexPtr();
+    const int *innerIndices = A.innerIndexPtr();
+
+#pragma omp parallel for
+    for (int row = 0; row < 2; ++row) {
+        const int start = row * block_size;
+        const int end = std::min(start + block_size, rows);
+        for (int j = start; j < end; j++) {
+            double sum = 0;
+            const int rowStart = outerIndices[j];
+            const int rowEnd = outerIndices[j + 1];
+
+            for (int i = rowStart; i < rowEnd; i++) {
+                if (const int col = innerIndices[i]; col != j) {
+                    sum += values[i] * u[col];
+                }
+            }
+
+            u[j] = (b[j] - sum) / A.coeff(j, j);
+        }
+    }
+}

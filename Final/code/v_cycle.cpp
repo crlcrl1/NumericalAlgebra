@@ -1,122 +1,6 @@
 #include "v_cycle.h"
 #include "util.h"
 
-#include <iostream>
-
-std::unordered_map<int, std::pair<CRSMatrix, CRSMatrix>> restrictOps;
-std::unordered_map<int, std::pair<CRSMatrix, CRSMatrix>> liftOps;
-std::unordered_map<int, std::pair<CRSMatrix, CRSMatrix>> coeff;
-
-
-std::pair<CRSMatrix, CRSMatrix> restrictOperator(const int n) {
-    assert(n % 2 == 0);
-
-    const int colsU = 2 * n * (n - 1);
-    const int colsF = n * n;
-    const int nNew = n / 2;
-    const int rowsU = 2 * nNew * (nNew - 1);
-    const int rowsF = nNew * nNew;
-    CRSMatrix restrictU(rowsU, colsU);
-    CRSMatrix restrictF(rowsF, colsF);
-    restrictU.reserve(Eigen::VectorXi::Constant(rowsU, 6));
-    restrictF.reserve(Eigen::VectorXi::Constant(rowsF, 4));
-
-    // restrict u
-    for (int i = 0; i < nNew; ++i) {
-        for (int j = 0; j < nNew - 1; ++j) {
-            const int row = i * (nNew - 1) + j;
-            const int base1 = 2 * i * (n - 1) + 2 * j + 1;
-            const int base2 = (2 * i + 1) * (n - 1) + 2 * j + 1;
-            restrictU.insert(row, base1) = 0.25;
-            restrictU.insert(row, base2) = 0.25;
-            restrictU.insert(row, base1 - 1) = 0.125;
-            restrictU.insert(row, base1 + 1) = 0.125;
-            restrictU.insert(row, base2 - 1) = 0.125;
-            restrictU.insert(row, base2 + 1) = 0.125;
-        }
-    }
-
-    const int offsetRestrict = nNew * (nNew - 1);
-    const int offsetOriginal = n * (n - 1);
-    // restrict v
-    for (int i = 0; i < nNew - 1; ++i) {
-        for (int j = 0; j < nNew; ++j) {
-            const int row = offsetRestrict + i * nNew + j;
-            const int base1 = (2 * i + 1) * n + 2 * j + offsetOriginal;
-            const int base2 = base1 + 1;
-            restrictU.insert(row, base1) = 0.25;
-            restrictU.insert(row, base2) = 0.25;
-            restrictU.insert(row, base1 - n) = 0.125;
-            restrictU.insert(row, base1 + n) = 0.125;
-            restrictU.insert(row, base2 - n) = 0.125;
-            restrictU.insert(row, base2 + n) = 0.125;
-        }
-    }
-    restrictU.makeCompressed();
-
-    // restrict f
-    for (int i = 0; i < nNew; ++i) {
-        for (int j = 0; j < nNew; ++j) {
-            const int row = i * nNew + j;
-            const int base = 2 * i * n + 2 * j;
-            restrictF.insert(row, base) = 0.25;
-            restrictF.insert(row, base + 1) = 0.25;
-            restrictF.insert(row, base + n) = 0.25;
-            restrictF.insert(row, base + n + 1) = 0.25;
-        }
-    }
-    restrictF.makeCompressed();
-
-    return {restrictU, restrictF};
-}
-
-void parallelGaussSeidel(const CRSMatrix &A, Eigen::VectorXd &u, const Eigen::VectorXd &b) {
-    const int rows = static_cast<int>(u.size());
-    const int block_size = rows / 2;
-    const double *values = A.valuePtr();
-    const int *outerIndices = A.outerIndexPtr();
-    const int *innerIndices = A.innerIndexPtr();
-
-#pragma omp parallel for
-    for (int row = 0; row < 2; ++row) {
-        const int start = row * block_size;
-        const int end = std::min(start + block_size, rows);
-        for (int j = start; j < end; j++) {
-            double sum = 0;
-            const int rowStart = outerIndices[j];
-            const int rowEnd = outerIndices[j + 1];
-
-            for (int i = rowStart; i < rowEnd; i++) {
-                if (const int col = innerIndices[i]; col != j) {
-                    sum += values[i] * u[col];
-                }
-            }
-
-            u[j] = (b[j] - sum) / A.coeff(j, j);
-        }
-    }
-}
-
-void gaussSeidel(const CRSMatrix &A, Eigen::VectorXd &u, const Eigen::VectorXd &b) {
-    const int rows = static_cast<int>(u.size());
-    const double *values = A.valuePtr();
-    const int *outerIndices = A.outerIndexPtr();
-    const int *innerIndices = A.innerIndexPtr();
-
-    for (int j = 0; j < rows; j++) {
-        double sum = 0;
-        const int rowStart = outerIndices[j];
-        const int rowEnd = outerIndices[j + 1];
-
-        for (int i = rowStart; i < rowEnd; i++) {
-            if (const int col = innerIndices[i]; col != j) {
-                sum += values[i] * u[col];
-            }
-        }
-
-        u[j] = (b[j] - sum) / A.coeff(j, j);
-    }
-}
 
 void updatePressure(Eigen::VectorXd &u, Eigen::VectorXd &p, const Eigen::VectorXd &d, const int i,
                     const int j, const int n) {
@@ -181,8 +65,12 @@ void parallelDGSIter(const CRSMatrix &A, const CRSMatrix &B, Eigen::VectorXd &u,
     for (int k = 0; k < 2; ++k) {
         for (int l = 0; l < 2; ++l) {
             // these units will update in parallel
-            for (int i = k * (n / 2 + 1); i < k * (n / 2 + 1) + n / 2 - 1; ++i) {
-                for (int j = l * (n / 2 + 1); j < l * (n / 2 + 1) + n / 2 - 1; ++j) {
+            const int start1 = k * (n / 2 + 1);
+            const int end1 = k * (n / 2 + 1) + n / 2 - 1;
+            const int start2 = l * (n / 2 + 1);
+            const int end2 = l * (n / 2 + 1) + n / 2 - 1;
+            for (int i = start1; i < end1; ++i) {
+                for (int j = start2; j < end2; ++j) {
                     updatePressure(u, p, d, i, j, n);
                 }
             }
@@ -192,13 +80,15 @@ void parallelDGSIter(const CRSMatrix &A, const CRSMatrix &B, Eigen::VectorXd &u,
 #pragma omp parallel for collapse(2)
     for (int i = 0; i < 2; ++i) {
         for (int j = 0; j < 2; ++j) {
+            const int start = j * (n / 2 + 1);
+            const int end = j * (n / 2 + 1) + n / 2 - 1;
             if (i == 0) {
-                for (int k = j * (n / 2 + 1); k < j * (n / 2 + 1) + n / 2 - 1; ++k) {
+                for (int k = start; k < end; ++k) {
                     updatePressure(u, p, d, n / 2 - 1, k, n);
                     updatePressure(u, p, d, n / 2, k, n);
                 }
             } else {
-                for (int k = j * (n / 2 + 1); k < j * (n / 2 + 1) + n / 2 - 1; ++k) {
+                for (int k = start; k < end; ++k) {
                     updatePressure(u, p, d, k, n / 2 - 1, n);
                     updatePressure(u, p, d, k, n / 2, n);
                 }
@@ -228,6 +118,10 @@ void DGSIter(const CRSMatrix &A, const CRSMatrix &B, Eigen::VectorXd &u, Eigen::
 void multiGridIter(const CRSMatrix &A, const CRSMatrix &B, Eigen::VectorXd &u, Eigen::VectorXd &p,
                    const Eigen::VectorXd &f, const Eigen::VectorXd &d, const int n, const int v1,
                    const int v2) {
+    static std::unordered_map<int, std::pair<CRSMatrix, CRSMatrix>> restrictOps;
+    static std::unordered_map<int, std::pair<CRSMatrix, CRSMatrix>> prolongOps;
+    static std::unordered_map<int, std::pair<CRSMatrix, CRSMatrix>> coeffs;
+
     if (n == 1) {
         return;
     }
@@ -244,23 +138,24 @@ void multiGridIter(const CRSMatrix &A, const CRSMatrix &B, Eigen::VectorXd &u, E
     const Eigen::VectorXd errorP = d - B.transpose() * u;
 
     if (!restrictOps.contains(n)) {
-        const auto [restrictU, restrictP] = restrictOperator(n);
+        const auto restrictU = ::restrictU(n);
+        const auto restrictP = restrictF(n);
         restrictOps.insert({n, {restrictU, restrictP}});
-        liftOps.insert({n, {restrictU.transpose() * 4, restrictP.transpose() * 4}});
+        prolongOps.insert({n, {restrictU.transpose() * 4, restrictP.transpose() * 4}});
     }
 
     const auto &[restrictU, restrictP] = restrictOps.at(n);
-    const auto &[liftU, liftP] = liftOps.at(n);
+    const auto &[liftU, liftP] = prolongOps.at(n);
 
     const auto restrictErrorU = restrictU * errorU;
     const auto restrictErrorP = restrictP * errorP;
 
-    if (!coeff.contains(n)) {
+    if (!coeffs.contains(n)) {
         const auto restrictA = initA(n / 2);
         const auto restrictB = initB(n / 2);
-        coeff.insert({n, {restrictA, restrictB}});
+        coeffs.insert({n, {restrictA, restrictB}});
     }
-    const auto &[restrictA, restrictB] = coeff.at(n);
+    const auto &[restrictA, restrictB] = coeffs.at(n);
 
     Eigen::VectorXd rectifU = Eigen::VectorXd::Zero(n * (n / 2 - 1));
     Eigen::VectorXd rectifP = Eigen::VectorXd::Zero(n * n / 4);
@@ -285,10 +180,10 @@ int multiGridSolver(const CRSMatrix &A, const CRSMatrix &B, Eigen::VectorXd &u, 
                     const int v2, const double tol) {
     assert(tol < 1);
 
-    const CRSMatrix BTranspose = B.transpose();
+    const CRSMatrix BTrans = B.transpose();
     Eigen::VectorXd errorU = f;
     Eigen::VectorXd errorP = d;
-    const double initialError = errorU.norm() + errorP.norm();
+    const double initialError = std::sqrt(errorU.squaredNorm() + errorP.squaredNorm());
     double error = initialError;
     int k = 0;
     logError(error, k);
@@ -300,8 +195,8 @@ int multiGridSolver(const CRSMatrix &A, const CRSMatrix &B, Eigen::VectorXd &u, 
         u += rectifU;
         p += rectifP;
         errorU = f - A * u - B * p;
-        errorP = d - BTranspose * u;
-        error = errorU.norm() + errorP.norm();
+        errorP = d - BTrans * u;
+        error = std::sqrt(errorU.squaredNorm() + errorP.squaredNorm());
         logError(error, ++k);
     }
     return k;

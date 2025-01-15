@@ -9,6 +9,4 @@ int multiGridSolver(const CRSMatrix &A, const CRSMatrix &B, Eigen::VectorXd &u, 
                     const Eigen::VectorXd &f, const Eigen::VectorXd &d, int n, int v1, int v2,
                     double tol);
 
-std::pair<CRSMatrix, CRSMatrix> restrictOperator(int n);
-
 #endif // V_CYCLE_H

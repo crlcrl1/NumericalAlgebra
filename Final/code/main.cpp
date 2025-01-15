@@ -24,10 +24,10 @@ int main() {
     Equation eq(n, f, g);
 
     const auto start = std::chrono::high_resolution_clock::now();
-    const auto &[resU, resV, resP, k] = eq.solveMultiGrid(2, 2, 1e-8);
+    const auto &[resU, resV, resP, k] = eq.solveUzawaPCG(2, 2, 1e-8);
     const auto end = std::chrono::high_resolution_clock::now();
     const std::chrono::duration<double> diff = end - start;
-    std::cout << std::format("Time: {}s, Iteration count: {}, Error: {}", diff.count(), k,
+    std::cout << std::format("Time: {:.6f}s, Iteration count: {}, Error: {}", diff.count(), k,
                              error(resU, resV, n))
               << std::endl;
     return 0;

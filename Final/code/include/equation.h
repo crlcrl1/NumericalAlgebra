@@ -11,12 +11,13 @@ public:
     explicit Equation(int n, const std::function<double(double, double)> &f,
                       const std::function<double(double, double)> &g);
 
-    [[nodiscard]] const CRSMatrix &getA() const { return A; }
-    [[nodiscard]] const CRSMatrix &getB() const { return B; }
-    [[nodiscard]] const Eigen::VectorXd &getF() const { return f; }
-
     std::tuple<Eigen::MatrixXd, Eigen::MatrixXd, Eigen::MatrixXd, int>
     solveMultiGrid(int v1, int v2, double tol);
+
+    std::tuple<Eigen::MatrixXd, Eigen::MatrixXd, Eigen::MatrixXd, int> solveUzawaLDL(double tol);
+    std::tuple<Eigen::MatrixXd, Eigen::MatrixXd, Eigen::MatrixXd, int> solveUzawaCG(double tol);
+    std::tuple<Eigen::MatrixXd, Eigen::MatrixXd, Eigen::MatrixXd, int> solveUzawaPCG(int v1, int v2,
+                                                                                     double tol);
 
 private:
     const int n;

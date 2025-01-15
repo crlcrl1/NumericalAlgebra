@@ -1,5 +1,9 @@
 #include "equation.h"
+
+#include <tuple>
+
 #include "util.h"
+#include "uzawa.h"
 #include "v_cycle.h"
 
 constexpr double PI = std::numbers::pi;
@@ -8,6 +12,30 @@ constexpr double PI = std::numbers::pi;
 double deriveU(const double x) { return 2 * PI * (1 - std::cos(2 * PI * x)); }
 
 double deriveV(const double y) { return -2 * PI * (1 - std::cos(2 * PI * y)); }
+
+std::tuple<Eigen::MatrixXd, Eigen::MatrixXd, Eigen::MatrixXd>
+getResult(const Eigen::VectorXd &u, const Eigen::VectorXd &p, const int n) {
+    auto resultU = Eigen::MatrixXd(n, n - 1);
+    auto resultV = Eigen::MatrixXd(n - 1, n);
+    auto resultP = Eigen::MatrixXd(n, n);
+    for (int i = 0; i < n; ++i) {
+        for (int j = 0; j < n - 1; ++j) {
+            resultU(i, j) = u(i * (n - 1) + j);
+        }
+    }
+    for (int i = 0; i < n - 1; ++i) {
+        for (int j = 0; j < n; ++j) {
+            resultV(i, j) = u(n * (n - 1) + i * n + j);
+        }
+    }
+    for (int i = 0; i < n; ++i) {
+        for (int j = 0; j < n; ++j) {
+            resultP(i, j) = p(i * n + j);
+        }
+    }
+
+    return {resultU, resultV, resultP};
+}
 
 
 Equation::Equation(const int n, const std::function<double(double, double)> &f,
@@ -46,24 +74,35 @@ std::tuple<Eigen::MatrixXd, Eigen::MatrixXd, Eigen::MatrixXd, int>
 Equation::solveMultiGrid(const int v1, const int v2, const double tol) {
     const Eigen::VectorXd d = Eigen::VectorXd::Zero(n * n);
     const int iterNum = multiGridSolver(A, B, u, p, f, d, n, v1, v2, tol);
-    auto resultU = Eigen::MatrixXd(n, n - 1);
-    auto resultV = Eigen::MatrixXd(n - 1, n);
-    auto resultP = Eigen::MatrixXd(n, n);
-    for (int i = 0; i < n; ++i) {
-        for (int j = 0; j < n - 1; ++j) {
-            resultU(i, j) = u(i * (n - 1) + j);
-        }
-    }
-    for (int i = 0; i < n - 1; ++i) {
-        for (int j = 0; j < n; ++j) {
-            resultV(i, j) = u(n * (n - 1) + i * n + j);
-        }
-    }
-    for (int i = 0; i < n; ++i) {
-        for (int j = 0; j < n; ++j) {
-            resultP(i, j) = p(i * n + j);
-        }
-    }
 
+    auto [resultU, resultV, resultP] = getResult(u, p, n);
+    return {resultU, resultV, resultP, iterNum};
+}
+
+
+std::tuple<Eigen::MatrixXd, Eigen::MatrixXd, Eigen::MatrixXd, int>
+Equation::solveUzawaLDL(const double tol) {
+    const Eigen::VectorXd d = Eigen::VectorXd::Zero(n * n);
+    const int iterNum = uzawaSolverLDL(A, B, u, p, f, tol);
+
+    auto [resultU, resultV, resultP] = getResult(u, p, n);
+    return {resultU, resultV, resultP, iterNum};
+}
+
+std::tuple<Eigen::MatrixXd, Eigen::MatrixXd, Eigen::MatrixXd, int>
+Equation::solveUzawaCG(const double tol) {
+    const Eigen::VectorXd d = Eigen::VectorXd::Zero(n * n);
+    const int iterNum = uzawaSolverCG(A, B, u, p, f, tol);
+
+    auto [resultU, resultV, resultP] = getResult(u, p, n);
+    return {resultU, resultV, resultP, iterNum};
+}
+
+std::tuple<Eigen::MatrixXd, Eigen::MatrixXd, Eigen::MatrixXd, int>
+Equation::solveUzawaPCG(const int v1, const int v2, const double tol) {
+    const Eigen::VectorXd d = Eigen::VectorXd::Zero(n * n);
+    const int iterNum = uzawaSolverPCG(A, B, u, p, f, n, 2, 2, tol);
+
+    auto [resultU, resultV, resultP] = getResult(u, p, n);
     return {resultU, resultV, resultP, iterNum};
 }
