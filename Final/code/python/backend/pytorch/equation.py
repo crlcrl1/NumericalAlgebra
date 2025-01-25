@@ -1,7 +1,7 @@
 import torch
 
-from ..equation import StrokesEquation
 from .v_cycle import v_cycle_iter, error
+from ..equation import StrokesEquation
 
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -28,7 +28,7 @@ class TorchStrokesEquation(StrokesEquation):
             self.log_error(iteration, init_error)
         while iter_error > tol * init_error and iteration < 40:
             u, v, p = torch.zeros_like(self.u), torch.zeros_like(self.v), torch.zeros_like(self.p)
-            v_cycle_iter(u, v, p, u_err, v_err, p_err, self.n, 2, 2)
+            v_cycle_iter(u, v, p, u_err, v_err, p_err, self.n)
             self.u += u
             self.v += v
             self.p += p

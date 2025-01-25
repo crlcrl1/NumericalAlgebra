@@ -9,7 +9,8 @@ class StrokesEquation(metaclass=abc.ABCMeta):
         self.n = n
 
         def f(x, y):
-            return -4 * np.pi ** 2 * np.sin(2 * np.pi * y) * (2 * np.cos(2 * np.pi * x) - 1) + x ** 2
+            return -4 * np.pi ** 2 * np.sin(2 * np.pi * y) * (
+                        2 * np.cos(2 * np.pi * x) - 1) + x ** 2
 
         def g(x, y):
             return 4 * np.pi ** 2 * np.sin(2 * np.pi * x) * (2 * np.cos(2 * np.pi * y) - 1)
@@ -28,9 +29,11 @@ class StrokesEquation(metaclass=abc.ABCMeta):
 
         self.d = np.zeros((n, n), dtype=np.float64)
         self.real_u = np.fromfunction(
-            lambda i, j: np.sin(2 * np.pi * (i + 0.5) / n) * (1 - np.cos(2 * np.pi * (j + 1) / n)), (n, n - 1))
+            lambda i, j: np.sin(2 * np.pi * (i + 0.5) / n) * (1 - np.cos(2 * np.pi * (j + 1) / n)),
+            (n, n - 1))
         self.real_v = np.fromfunction(
-            lambda i, j: -np.sin(2 * np.pi * (j + 0.5) / n) * (1 - np.cos(2 * np.pi * (i + 1) / n)), (n - 1, n))
+            lambda i, j: -np.sin(2 * np.pi * (j + 0.5) / n) * (1 - np.cos(2 * np.pi * (i + 1) / n)),
+            (n - 1, n))
 
         boundary_u = np.fromfunction(lambda i: n * du((i + 1) / n), (n - 1,))
         boundary_v = np.fromfunction(lambda j: n * dv((j + 1) / n), (n - 1,))

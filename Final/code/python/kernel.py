@@ -12,20 +12,21 @@ def gs_kernel_u_inner(u_ptr, fu_ptr, out_ptr, n: int, shift: int, block_size: tl
     pid = tl.program_id(axis=0)
     y = pid * block_size * 2 + shift + tl.arange(0, block_size) * 2
     offsets = y * (n - 1)
+    factor = tl.where(y == 0 or y == n - 1, 3 * n * n, 4 * n * n)
 
-    for i in tl.range(n - 1):
+    left = tl.zeros((block_size,), tl.float64)
+    for i in tl.range(n - 1, loop_unroll_factor=2):
         base_offsets = offsets + i
-        left = tl.load(u_ptr + base_offsets - 1) if i != 0 else tl.zeros((block_size,), tl.float64)
         right = tl.load(u_ptr + base_offsets + 1) if i != n - 2 else tl.zeros((block_size,), tl.float64)
         bottom = tl.load(u_ptr + base_offsets - (n - 1), mask=y != 0, other=0.0)
         top = tl.load(u_ptr + base_offsets + (n - 1), mask=y != n - 1, other=0.0)
         fu = tl.load(fu_ptr + base_offsets)
 
-        factor = tl.where(y == 0 or y == n - 1, 3 * n * n, 4 * n * n)
         new_val = (fu + n * n * (left + right + top + bottom)) / factor
         tl.store(u_ptr + base_offsets, new_val)
         if out_ptr is not None:
             tl.store(out_ptr + base_offsets, new_val)
+        left = new_val
 
 
 @triton.jit
@@ -35,9 +36,21 @@ def gs_kernel_u_inplace(u_ptr, fu_ptr, n: int, block_size: tl.constexpr):
 
 
 @triton.jit
+def gs_kernel_u_inplace_rev(u_ptr, fu_ptr, n: int, block_size: tl.constexpr):
+    gs_kernel_u_inner(u_ptr, fu_ptr, None, n, 1, block_size)
+    gs_kernel_u_inner(u_ptr, fu_ptr, None, n, 0, block_size)
+
+
+@triton.jit
 def gs_kernel_u(u_ptr, fu_ptr, out_ptr, n: int, block_size: tl.constexpr):
     gs_kernel_u_inner(u_ptr, fu_ptr, out_ptr, n, 0, block_size)
     gs_kernel_u_inner(u_ptr, fu_ptr, out_ptr, n, 1, block_size)
+
+
+@triton.jit
+def gs_kernel_u_rev(u_ptr, fu_ptr, out_ptr, n: int, block_size: tl.constexpr):
+    gs_kernel_u_inner(u_ptr, fu_ptr, out_ptr, n, 1, block_size)
+    gs_kernel_u_inner(u_ptr, fu_ptr, out_ptr, n, 0, block_size)
 
 
 @triton.jit
@@ -45,20 +58,21 @@ def gs_kernel_v_inner(v_ptr, fv_ptr, out_ptr, n: int, shift: int, block_size: tl
     # v: (n-1, n), fv: (n-1, n)
     pid = tl.program_id(axis=0)
     x = pid * block_size * 2 + shift + tl.arange(0, block_size) * 2
+    factor = tl.where(x == 0 or x == n - 1, 3 * n * n, 4 * n * n)
 
-    for i in tl.range(n - 1):
+    bottom = tl.zeros((block_size,), tl.float64)
+    for i in tl.range(n - 1, loop_unroll_factor=2):
         base_offsets = x + i * n
-        bottom = tl.load(v_ptr + base_offsets - n) if i != 0 else tl.zeros((block_size,), tl.float64)
         top = tl.load(v_ptr + base_offsets + n) if i != n - 2 else tl.zeros((block_size,), tl.float64)
         left = tl.load(v_ptr + base_offsets - 1, mask=x != 0, other=0.0)
         right = tl.load(v_ptr + base_offsets + 1, mask=x != n - 1, other=0.0)
         fv = tl.load(fv_ptr + base_offsets)
 
-        factor = tl.where(x == 0 or x == n - 1, 3 * n * n, 4 * n * n)
         new_val = (fv + n * n * (left + right + top + bottom)) / factor
         tl.store(v_ptr + base_offsets, new_val)
         if out_ptr is not None:
             tl.store(out_ptr + base_offsets, new_val)
+        bottom = new_val
 
 
 @triton.jit
@@ -68,9 +82,21 @@ def gs_kernel_v_inplace(v_ptr, fv_ptr, n: int, block_size: tl.constexpr):
 
 
 @triton.jit
+def gs_kernel_v_inplace_rev(v_ptr, fv_ptr, n: int, block_size: tl.constexpr):
+    gs_kernel_v_inner(v_ptr, fv_ptr, None, n, 1, block_size)
+    gs_kernel_v_inner(v_ptr, fv_ptr, None, n, 0, block_size)
+
+
+@triton.jit
 def gs_kernel_v(v_ptr, fv_ptr, out_ptr, n: int, block_size: tl.constexpr):
     gs_kernel_v_inner(v_ptr, fv_ptr, out_ptr, n, 0, block_size)
     gs_kernel_v_inner(v_ptr, fv_ptr, out_ptr, n, 1, block_size)
+
+
+@triton.jit
+def gs_kernel_v_rev(v_ptr, fv_ptr, out_ptr, n: int, block_size: tl.constexpr):
+    gs_kernel_v_inner(v_ptr, fv_ptr, out_ptr, n, 1, block_size)
+    gs_kernel_v_inner(v_ptr, fv_ptr, out_ptr, n, 0, block_size)
 
 
 #########################################
@@ -123,13 +149,15 @@ def update_pressure_kernel_inner(u_ptr, v_ptr, p_ptr, d_ptr,
     block_start = pid * block_size * total_num + shift
     x = block_start + tl.arange(0, block_size) * total_num
 
-    for i in tl.range(n):
+    v_bottom = tl.zeros((block_size,), tl.float64)
+    p_bottom = tl.zeros((block_size,), tl.float64)
+    p = tl.load(p_ptr + x)
+    for i in tl.range(n, loop_unroll_factor=8):
         offsets = x + i * n
         y = tl.full((block_size,), i, dtype=tl.int32)
         d = tl.load(d_ptr + offsets)
         u_right = tl.load(u_ptr + x + y * (n - 1), mask=x != n - 1, other=0)
         u_left = tl.load(u_ptr + x - 1 + y * (n - 1), mask=x != 0, other=0)
-        v_bottom = tl.load(v_ptr + x + (y - 1) * n, mask=y != 0, other=0)
         v_top = tl.load(v_ptr + x + y * n, mask=y != n - 1, other=0)
         r = -d - n * (u_right - u_left + v_top - v_bottom)
 
@@ -148,23 +176,16 @@ def update_pressure_kernel_inner(u_ptr, v_ptr, p_ptr, d_ptr,
         tl.store(u_ptr + x + y * (n - 1), u_right, mask=x != n - 1)
         tl.store(u_ptr + x - 1 + y * (n - 1), u_left, mask=x != 0)
         tl.store(v_ptr + x + (y - 1) * n, v_bottom, mask=y != 0)
-        tl.store(v_ptr + x + y * n, v_top, mask=y != n - 1)
         if out_u_ptr is not None:
             tl.store(out_u_ptr + x + y * (n - 1), u_right, mask=x != n - 1)
             tl.store(out_u_ptr + x - 1 + y * (n - 1), u_left, mask=x != 0)
             tl.store(out_v_ptr + x + (y - 1) * n, v_bottom, mask=y != 0)
-            tl.store(out_v_ptr + x + y * n, v_top, mask=y != n - 1)
 
         # update pressure
-        p = tl.load(p_ptr + offsets)
         p += r
-        tl.store(p_ptr + offsets, p)
-        if out_p_ptr is not None:
-            tl.store(out_p_ptr + offsets, p)
         r = r / cnt
         p_left = tl.load(p_ptr + x - 1 + y * n, mask=x != 0)
         p_right = tl.load(p_ptr + x + 1 + y * n, mask=x != n - 1)
-        p_bottom = tl.load(p_ptr + x + (y - 1) * n, mask=y != 0)
         p_top = tl.load(p_ptr + x + (y + 1) * n, mask=y != n - 1)
         p_left -= r
         p_right -= r
@@ -173,12 +194,18 @@ def update_pressure_kernel_inner(u_ptr, v_ptr, p_ptr, d_ptr,
         tl.store(p_ptr + x - 1 + y * n, p_left, mask=x != 0)
         tl.store(p_ptr + x + 1 + y * n, p_right, mask=x != n - 1)
         tl.store(p_ptr + x + (y - 1) * n, p_bottom, mask=y != 0)
-        tl.store(p_ptr + x + (y + 1) * n, p_top, mask=y != n - 1)
         if out_p_ptr is not None:
             tl.store(out_p_ptr + x - 1 + y * n, p_left, mask=x != 0)
             tl.store(out_p_ptr + x + 1 + y * n, p_right, mask=x != n - 1)
             tl.store(out_p_ptr + x + (y - 1) * n, p_bottom, mask=y != 0)
-            tl.store(out_p_ptr + x + (y + 1) * n, p_top, mask=y != n - 1)
+
+        v_bottom = v_top
+        p_bottom = p
+        p = p_top
+
+    tl.store(p_ptr + x + n * (n - 1), p_bottom)
+    if out_p_ptr is not None:
+        tl.store(out_p_ptr + x + n * (n - 1), p_bottom)
 
 
 @triton.jit
@@ -189,9 +216,25 @@ def update_pressure_kernel_inplace(u_ptr, v_ptr, p_ptr, d_ptr, n: int, total_num
 
 
 @triton.jit
+def update_pressure_kernel_inplace_rev(u_ptr, v_ptr, p_ptr, d_ptr, n: int, total_num: int,
+                                       block_size: tl.constexpr):
+    for i in tl.range(total_num - 1, -1, -1):
+        update_pressure_kernel_inner(u_ptr, v_ptr, p_ptr, d_ptr, None, None, None, n, i, total_num, block_size)
+
+
+@triton.jit
 def update_pressure_kernel(u_ptr, v_ptr, p_ptr, d_ptr, out_u_ptr, out_v_ptr, out_p_ptr, n: int, total_num: int,
                            block_size: tl.constexpr):
     for i in tl.range(total_num):
+        update_pressure_kernel_inner(u_ptr, v_ptr, p_ptr, d_ptr,
+                                     out_u_ptr, out_v_ptr, out_p_ptr,
+                                     n, i, total_num, block_size)
+
+
+@triton.jit
+def update_pressure_kernel_rev(u_ptr, v_ptr, p_ptr, d_ptr, out_u_ptr, out_v_ptr, out_p_ptr, n: int, total_num: int,
+                               block_size: tl.constexpr):
+    for i in tl.range(total_num - 1, -1, -1):
         update_pressure_kernel_inner(u_ptr, v_ptr, p_ptr, d_ptr,
                                      out_u_ptr, out_v_ptr, out_p_ptr,
                                      n, i, total_num, block_size)

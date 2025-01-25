@@ -1,8 +1,8 @@
 import jax
 import jax.numpy as jnp
 
-from ..equation import StrokesEquation
 from .v_cycle import error, v_cycle_iter
+from ..equation import StrokesEquation
 
 jax.config.update("jax_enable_x64", True)
 
@@ -11,7 +11,7 @@ error = jax.jit(error, static_argnames='n')
 
 def iterate(u, v, p, u_err, v_err, p_err, fu, fv, d, n):
     ru, rv, rp = jnp.zeros_like(u_err), jnp.zeros_like(v_err), jnp.zeros_like(p_err)
-    ru, rv, rp = jax.jit(v_cycle_iter, static_argnames='n')(ru, rv, rp, u_err, v_err, p_err, n, 2, 2)
+    ru, rv, rp = jax.jit(v_cycle_iter, static_argnames='n')(ru, rv, rp, u_err, v_err, p_err, n)
     u = u + ru
     v = v + rv
     p = p + rp
@@ -35,9 +35,11 @@ class JaxStrokesEquation(StrokesEquation):
         print("AOT compiling...")
         self.iter_fn = jax.jit(iterate, static_argnames='n')
         self.iter_fn = self.iter_fn.lower(self.u, self.v, self.p,
-                                          jnp.empty_like(self.u), jnp.empty_like(self.v), jnp.empty_like(self.p),
+                                          jnp.empty_like(self.u), jnp.empty_like(self.v),
+                                          jnp.empty_like(self.p),
                                           self.fu, self.fv, self.d,
                                           self.n).compile()
+        print("\033[1A", end="")
 
     def solve_error(self):
         u_err, v_err, p_err = error(self.u, self.v, self.p, self.fu, self.fv, self.d, self.n)
@@ -51,9 +53,12 @@ class JaxStrokesEquation(StrokesEquation):
         if not silent:
             self.log_error(iteration, init_error)
         while iter_error > tol * init_error and iteration < 40:
-            self.u, self.v, self.p, u_err, v_err, p_err, iter_error = self.iter_fn(self.u, self.v, self.p,
-                                                                                   u_err, v_err, p_err,
-                                                                                   self.fu, self.fv, self.d)
+            self.u, self.v, self.p, u_err, v_err, p_err, iter_error = self.iter_fn(self.u, self.v,
+                                                                                   self.p,
+                                                                                   u_err, v_err,
+                                                                                   p_err,
+                                                                                   self.fu, self.fv,
+                                                                                   self.d)
             iteration += 1
             if not silent:
                 self.log_error(iteration, iter_error)

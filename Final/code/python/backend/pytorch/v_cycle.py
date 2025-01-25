@@ -1,7 +1,6 @@
 import torch
-from torch import Tensor
-
 from kernel import *
+from torch import Tensor
 
 stream1 = torch.cuda.Stream()
 stream2 = torch.cuda.Stream()
@@ -40,6 +39,23 @@ def dgs(u: Tensor, v: Tensor, p: Tensor, fu: Tensor, fv: Tensor, d: Tensor, n: i
     torch.cuda.synchronize()
 
 
+def dgs_rev(u: Tensor, v: Tensor, p: Tensor, fu: Tensor, fv: Tensor, d: Tensor, n: int):
+    block_size = 64 if n >= 64 else n
+    fu_new = torch.empty_like(fu)
+    fv_new = torch.empty_like(fv)
+    grid = lambda meta: (triton.cdiv(n * (n - 1), meta["block_size"]),)
+    cal_fu_kernel[grid](fu, p, fu_new, n, block_size)
+    cal_fv_kernel[grid](fv, p, fv_new, n, block_size)
+    torch.cuda.synchronize()
+
+    gauss_seidel_rev(u, v, fu_new, fv_new, n)
+
+    block_size = 64 if n >= 256 else n // 4
+    grid = lambda meta: (triton.cdiv(n // 4, meta["block_size"]),)
+    update_pressure_kernel_inplace_rev[grid](u, v, p, d, n, 4, block_size)
+    torch.cuda.synchronize()
+
+
 def gauss_seidel(u: Tensor, v: Tensor, fu: Tensor, fv: Tensor, n: int):
     block_size = 128 if n >= 256 else n // 2
     grid = lambda meta: (triton.cdiv(n // 2, meta["block_size"]),)
@@ -48,6 +64,17 @@ def gauss_seidel(u: Tensor, v: Tensor, fu: Tensor, fv: Tensor, n: int):
         gs_kernel_u_inplace[grid](u, fu, n, block_size)
     with torch.cuda.stream(stream2):
         gs_kernel_v_inplace[grid](v, fv, n, block_size)
+    torch.cuda.synchronize()
+
+
+def gauss_seidel_rev(u: Tensor, v: Tensor, fu: Tensor, fv: Tensor, n: int):
+    block_size = 128 if n >= 256 else n // 2
+    grid = lambda meta: (triton.cdiv(n // 2, meta["block_size"]),)
+
+    with torch.cuda.stream(stream1):
+        gs_kernel_u_inplace_rev[grid](u, fu, n, block_size)
+    with torch.cuda.stream(stream2):
+        gs_kernel_v_inplace_rev[grid](v, fv, n, block_size)
     torch.cuda.synchronize()
 
 
@@ -84,9 +111,9 @@ def lift(u: Tensor, v: Tensor, p: Tensor, n: int):
     return u_lift, v_lift, p_lift
 
 
-def v_cycle_iter(u: Tensor, v: Tensor, p: Tensor, fu: Tensor, fv: Tensor, d: Tensor, n: int, v1: int, v2: int):
-    for i in range(v1):
-        dgs(u, v, p, fu, fv, d, n)
+def v_cycle_iter(u: Tensor, v: Tensor, p: Tensor, fu: Tensor, fv: Tensor, d: Tensor, n: int):
+    dgs(u, v, p, fu, fv, d, n)
+    dgs_rev(u, v, p, fu, fv, d, n)
 
     if n > 4:
         u_err, v_err, p_err = error(u, v, p, fu, fv, d, n)
@@ -95,12 +122,12 @@ def v_cycle_iter(u: Tensor, v: Tensor, p: Tensor, fu: Tensor, fv: Tensor, d: Ten
         v_new = torch.zeros_like(v_err)
         p_new = torch.zeros_like(p_err)
 
-        v_cycle_iter(u_new, v_new, p_new, u_err, v_err, p_err, n // 2, v1, v2)
+        v_cycle_iter(u_new, v_new, p_new, u_err, v_err, p_err, n // 2)
 
         u_new, v_new, p_new = lift(u_new, v_new, p_new, n)
         u += u_new
         v += v_new
         p += p_new
 
-    for i in range(v2):
-        dgs(u, v, p, fu, fv, d, n)
+    dgs(u, v, p, fu, fv, d, n)
+    dgs_rev(u, v, p, fu, fv, d, n)
