@@ -112,9 +112,6 @@ def lift(u: Tensor, v: Tensor, p: Tensor, n: int):
 
 
 def v_cycle_iter(u: Tensor, v: Tensor, p: Tensor, fu: Tensor, fv: Tensor, d: Tensor, n: int):
-    dgs(u, v, p, fu, fv, d, n)
-    dgs_rev(u, v, p, fu, fv, d, n)
-
     if n > 4:
         u_err, v_err, p_err = error(u, v, p, fu, fv, d, n)
         u_err, v_err, p_err = restrict(u_err, v_err, p_err, n)
@@ -129,5 +126,7 @@ def v_cycle_iter(u: Tensor, v: Tensor, p: Tensor, fu: Tensor, fv: Tensor, d: Ten
         v += v_new
         p += p_new
 
+    dgs(u, v, p, fu, fv, d, n)
+    dgs_rev(u, v, p, fu, fv, d, n)
     dgs(u, v, p, fu, fv, d, n)
     dgs_rev(u, v, p, fu, fv, d, n)

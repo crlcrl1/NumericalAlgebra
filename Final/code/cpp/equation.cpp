@@ -101,7 +101,7 @@ Equation::solveUzawaCG(const double tol) {
 std::tuple<Eigen::MatrixXd, Eigen::MatrixXd, Eigen::MatrixXd, int>
 Equation::solveUzawaPCG(const int v1, const int v2, const double tol) {
     const Eigen::VectorXd d = Eigen::VectorXd::Zero(n * n);
-    const int iterNum = uzawaSolverPCG(A, B, u, p, f, n, 2, 2, tol);
+    const int iterNum = uzawaSolverPCG(A, B, u, p, f, n, v1, v2, tol);
 
     auto [resultU, resultV, resultP] = getResult(u, p, n);
     return {resultU, resultV, resultP, iterNum};

@@ -133,9 +133,6 @@ def lift(u: Array, v: Array, p: Array, n: int):
 
 
 def v_cycle_iter(u: Array, v: Array, p: Array, fu: Array, fv: Array, d: Array, n: int):
-    u, v, p = jax.jit(dgs, static_argnames='n')(u, v, p, fu, fv, d, n)
-    u, v, p = jax.jit(dgs_rev, static_argnames='n')(u, v, p, fu, fv, d, n)
-
     if n > 4:
         u_err, v_err, p_err = jax.jit(error, static_argnames='n')(u, v, p, fu, fv, d, n)
         u_err, v_err, p_err = jax.jit(restrict, static_argnames='n')(u_err, v_err, p_err, n)
@@ -151,6 +148,8 @@ def v_cycle_iter(u: Array, v: Array, p: Array, fu: Array, fv: Array, d: Array, n
         v += v_new
         p += p_new
 
+    u, v, p = jax.jit(dgs, static_argnames='n')(u, v, p, fu, fv, d, n)
+    u, v, p = jax.jit(dgs_rev, static_argnames='n')(u, v, p, fu, fv, d, n)
     u, v, p = jax.jit(dgs, static_argnames='n')(u, v, p, fu, fv, d, n)
     u, v, p = jax.jit(dgs_rev, static_argnames='n')(u, v, p, fu, fv, d, n)
     return u, v, p

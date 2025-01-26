@@ -148,6 +148,8 @@ def update_pressure_kernel_inner(u_ptr, v_ptr, p_ptr, d_ptr,
     pid = tl.program_id(axis=0)
     block_start = pid * block_size * total_num + shift
     x = block_start + tl.arange(0, block_size) * total_num
+    left = tl.where(x != 0, 1.0, 0.0)
+    right = tl.where(x != n - 1, 1.0, 0.0)
 
     v_bottom = tl.zeros((block_size,), tl.float64)
     p_bottom = tl.zeros((block_size,), tl.float64)
@@ -161,25 +163,23 @@ def update_pressure_kernel_inner(u_ptr, v_ptr, p_ptr, d_ptr,
         v_top = tl.load(v_ptr + x + y * n, mask=y != n - 1, other=0)
         r = -d - n * (u_right - u_left + v_top - v_bottom)
 
-        left = tl.where(x != 0, 1.0, 0.0)
-        right = tl.where(x != n - 1, 1.0, 0.0)
-        top = tl.where(y != n - 1, 1.0, 0.0)
-        bottom = tl.where(y != 0, 1.0, 0.0)
-        cnt = left + right + top + bottom
+        cnt = left + right + (i != 0) + (i != n - 1)
 
         # update speed
         delta = r / cnt / n
         u_left -= delta
         u_right += delta
-        v_bottom -= delta
         v_top += delta
         tl.store(u_ptr + x + y * (n - 1), u_right, mask=x != n - 1)
         tl.store(u_ptr + x - 1 + y * (n - 1), u_left, mask=x != 0)
-        tl.store(v_ptr + x + (y - 1) * n, v_bottom, mask=y != 0)
+        if i != 0:
+            v_bottom -= delta
+            tl.store(v_ptr + x + (y - 1) * n, v_bottom)
         if out_u_ptr is not None:
             tl.store(out_u_ptr + x + y * (n - 1), u_right, mask=x != n - 1)
             tl.store(out_u_ptr + x - 1 + y * (n - 1), u_left, mask=x != 0)
-            tl.store(out_v_ptr + x + (y - 1) * n, v_bottom, mask=y != 0)
+            if i != 0:
+                tl.store(out_v_ptr + x + (y - 1) * n, v_bottom)
 
         # update pressure
         p += r
@@ -189,15 +189,17 @@ def update_pressure_kernel_inner(u_ptr, v_ptr, p_ptr, d_ptr,
         p_top = tl.load(p_ptr + x + (y + 1) * n, mask=y != n - 1)
         p_left -= r
         p_right -= r
-        p_bottom -= r
         p_top -= r
         tl.store(p_ptr + x - 1 + y * n, p_left, mask=x != 0)
         tl.store(p_ptr + x + 1 + y * n, p_right, mask=x != n - 1)
-        tl.store(p_ptr + x + (y - 1) * n, p_bottom, mask=y != 0)
+        if i != 0:
+            p_bottom -= r
+            tl.store(p_ptr + x + (y - 1) * n, p_bottom)
         if out_p_ptr is not None:
             tl.store(out_p_ptr + x - 1 + y * n, p_left, mask=x != 0)
             tl.store(out_p_ptr + x + 1 + y * n, p_right, mask=x != n - 1)
-            tl.store(out_p_ptr + x + (y - 1) * n, p_bottom, mask=y != 0)
+            if i != 0:
+                tl.store(out_p_ptr + x + (y - 1) * n, p_bottom)
 
         v_bottom = v_top
         p_bottom = p
