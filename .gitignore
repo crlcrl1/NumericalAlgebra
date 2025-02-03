@@ -3,3 +3,10 @@ cmake-build*
 *.pdf
 *.zip
 **/__pycache__/
+
+## Latex ##
+*.aux
+*.log
+*.out
+*.toc
+*.synctex.gz
