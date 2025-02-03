@@ -70,7 +70,7 @@ Options:
             std::cout << std::format(help, argv[0]);
             exit(0);
         } else {
-            showError("Invalid argument");
+            showError("Invalid argument, use -h for help");
         }
         i++;
     }
@@ -80,7 +80,7 @@ Options:
 }
 
 void applyMultiGrid() {
-    for (constexpr std::array ns = {64, 128, 256, 512, 1024, 2048}; const auto n: ns) {
+    for (constexpr std::array ns = {64, 128, 256, 512, 1024, 2048, 4096}; const auto n: ns) {
         Equation eq(n, f, g);
         const auto start = std::chrono::high_resolution_clock::now();
         const auto [resU, resV, resP, iterNum] = eq.solveMultiGrid(2, 2, 1e-8);
